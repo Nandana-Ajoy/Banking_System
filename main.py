@@ -31,7 +31,7 @@ def get_account_balance(name):
         return None
     
 def deposit(name, amount):
-    cursor.execute('''
+    cursor.execute(''' 
     UPDATE account SET balance = balance + ? WHERE name = ?
     ''', (amount, name))
     connection.commit()
@@ -50,7 +50,7 @@ def withdraw(name, amount):
         connection.commit()
         print(f"Withdrew {amount} from {name}'s account.")
     else:
-        print("Insufficient fund or account not found.")
+        print("Insufficient fund or Account not found.")
     get_account_balance(name)
 
 def transfer(from_user, to_user, amount):
