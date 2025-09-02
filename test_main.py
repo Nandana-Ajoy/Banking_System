@@ -1,12 +1,48 @@
+import os
 import pytest
-from main import create_account, deposit, withdraw, transfer, check_balance
+import main
 
-@pytest.fixture
-def setup_accounts():
-    # Reset accounts before each test
-    global accounts
-    accounts = {}
-    return accounts
+os.environ["DB_NAME"] = ":memory:"
+main.init_db()
+
+@pytest.fixture(autouse=True)
+def setup_db():
+    conn, cur = main.get_connection()
+    cur.execute("DELETE FROM accounts")
+    cur.execute("DELETE FROM transactions")
+    conn.commit()
+    conn.close()
+    yield
+
+def create_account(holder):
+    return main.create_account(main.AccountCreate(account_no=holder, holder=holder))
+
+def deposit(holder, amount):
+    try:
+        result = main.deposit(holder, main.MoneyAction(amount=amount))
+        return f"Deposited {amount} to {holder}'s account."
+    except Exception as e:
+        return str(e.detail if hasattr(e, "detail") else e)
+
+def withdraw(holder, amount):
+    try:
+        result = main.withdraw(holder, main.MoneyAction(amount=amount))
+        return f"Withdrew {amount} from {holder}'s account."
+    except Exception as e:
+        return str(e.detail if hasattr(e, "detail") else e)
+
+def transfer(from_holder, to_holder, amount):
+    try:
+        result = main.transfer(main.Transfer(from_acc=from_holder, to_acc=to_holder, amount=amount))
+        return f"Transferred {amount} from {from_holder} to {to_holder}."
+    except Exception as e:
+        return str(e.detail if hasattr(e, "detail") else e)
+
+def check_balance(holder):
+    try:
+        return main.balance(holder)["balance"]
+    except Exception as e:
+        return str(e.detail if hasattr(e, "detail") else e)
 
 def test_create_account_success(setup_accounts):
     assert create_account("Alice") == "Account created for Alice."
