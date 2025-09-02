@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import sqlite3
 import uvicorn
-from datetime import datetime
 
 DB_NAME = "banking.db"
+
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -34,18 +34,22 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
 
 app = FastAPI(title="Simple Banking API")
+
 
 class AccountCreate(BaseModel):
     account_no: str
     holder: str
     balance: float = 0
 
+
 class MoneyAction(BaseModel):
     amount: float
     note: Optional[str] = None
+
 
 class Transfer(BaseModel):
     from_acc: str
@@ -62,6 +66,7 @@ def get_account(acc_no: str):
     conn.close()
     return acc
 
+
 def record_transaction(txn_type, amount, from_acc=None, to_acc=None, note=None):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
@@ -71,6 +76,7 @@ def record_transaction(txn_type, amount, from_acc=None, to_acc=None, note=None):
     )
     conn.commit()
     conn.close()
+
 
 @app.post("/accounts")
 def create_account(data: AccountCreate):
@@ -186,6 +192,21 @@ def transactions(acc_no: str, limit: int = 10):
         {"txn_type": r[0], "amount": r[1], "from": r[2], "to": r[3], "note": r[4], "time": r[5]}
         for r in rows
     ]
+
+
+@app.delete("/accounts/{acc_no}")
+def delete_account(acc_no: str):
+    acc = get_account(acc_no)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM accounts WHERE account_no=?", (acc_no,))
+    conn.commit()
+    conn.close()
+    return {"message": f"Account {acc_no} deleted"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
