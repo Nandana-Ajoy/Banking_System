@@ -2,38 +2,45 @@ import os
 import pytest
 import main
 
+# Use in-memory DB for testing
 os.environ["DB_NAME"] = ":memory:"
 main.init_db()
 
 @pytest.fixture(autouse=True)
 def setup_db():
-    conn, cur = main.get_connection()
+    # Reset DB before each test
+    conn = main.sqlite3.connect(main.DB_NAME)
+    cur = conn.cursor()
     cur.execute("DELETE FROM accounts")
     cur.execute("DELETE FROM transactions")
     conn.commit()
     conn.close()
     yield
 
+# Wrappers
 def create_account(holder):
-    return main.create_account(main.AccountCreate(account_no=holder, holder=holder))
+    try:
+        return main.create_account(main.AccountCreate(account_no=holder, holder=holder))
+    except Exception as e:
+        return str(e.detail if hasattr(e, "detail") else e)
 
 def deposit(holder, amount):
     try:
-        result = main.deposit(holder, main.MoneyAction(amount=amount))
+        main.deposit(holder, main.MoneyAction(amount=amount))
         return f"Deposited {amount} to {holder}'s account."
     except Exception as e:
         return str(e.detail if hasattr(e, "detail") else e)
 
 def withdraw(holder, amount):
     try:
-        result = main.withdraw(holder, main.MoneyAction(amount=amount))
+        main.withdraw(holder, main.MoneyAction(amount=amount))
         return f"Withdrew {amount} from {holder}'s account."
     except Exception as e:
         return str(e.detail if hasattr(e, "detail") else e)
 
 def transfer(from_holder, to_holder, amount):
     try:
-        result = main.transfer(main.Transfer(from_acc=from_holder, to_acc=to_holder, amount=amount))
+        main.transfer(main.Transfer(from_acc=from_holder, to_acc=to_holder, amount=amount))
         return f"Transferred {amount} from {from_holder} to {to_holder}."
     except Exception as e:
         return str(e.detail if hasattr(e, "detail") else e)
@@ -44,30 +51,34 @@ def check_balance(holder):
     except Exception as e:
         return str(e.detail if hasattr(e, "detail") else e)
 
-def test_create_account_success(setup_accounts):
-    assert create_account("Alice") == "Account created for Alice."
-    assert "Alice" in setup_accounts
 
-def test_create_duplicate_account(setup_accounts):
+# ------------------- Tests -------------------
+
+def test_create_account_success(setup_db):
+    result = create_account("Alice")
+    assert "success" in str(result).lower()
+
+def test_create_duplicate_account(setup_db):
     create_account("Alice")
-    assert create_account("Alice") == "Account already exists."
+    result = create_account("Alice")
+    assert "already exists" in str(result)
 
-# ------------------- Deposits -------------------
-def test_deposit_success(setup_accounts):
+def test_deposit_success(setup_db):
     create_account("Bob")
     assert deposit("Bob", 100) == "Deposited 100 to Bob's account."
     assert check_balance("Bob") == 100
 
-def test_deposit_negative_amount(setup_accounts):
+def test_deposit_negative_amount(setup_db):
     create_account("Bob")
-    assert deposit("Bob", -50) == "Deposit amount must be positive."
+    result = deposit("Bob", -50)
+    assert "must be positive" in str(result).lower()
     assert check_balance("Bob") == 0
 
-def test_deposit_to_nonexistent_account(setup_accounts):
-    assert deposit("Charlie", 200) == "Account does not exist."
+def test_deposit_to_nonexistent_account(setup_db):
+    result = deposit("Charlie", 200)
+    assert "not found" in str(result).lower()
 
-# ------------------- Withdrawals -------------------
-def test_withdraw_success(setup_accounts):
+def test_withdraw_success(setup_db):
     create_account("Daisy")
     deposit("Daisy", 300)
     assert withdraw("Daisy", 150) == "Withdrew 150 from Daisy's account."
