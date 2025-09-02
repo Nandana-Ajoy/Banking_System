@@ -1,69 +1,122 @@
-import os
 import pytest
-from fastapi.testclient import TestClient
-from main import app, init_db, DB_NAME
+from main import create_account, deposit, withdraw, transfer, check_balance
 
-client = TestClient(app)
+@pytest.fixture
+def setup_accounts():
+    # Reset accounts before each test
+    global accounts
+    accounts = {}
+    return accounts
 
+def test_create_account_success(setup_accounts):
+    assert create_account("Alice") == "Account created for Alice."
+    assert "Alice" in setup_accounts
 
-@pytest.fixture(autouse=True)
-def reset_database():
-    # Reset DB before each test
-    if os.path.exists(DB_NAME):
-        os.remove(DB_NAME)
-    init_db()
-    yield
+def test_create_duplicate_account(setup_accounts):
+    create_account("Alice")
+    assert create_account("Alice") == "Account already exists."
 
+# ------------------- Deposits -------------------
+def test_deposit_success(setup_accounts):
+    create_account("Bob")
+    assert deposit("Bob", 100) == "Deposited 100 to Bob's account."
+    assert check_balance("Bob") == 100
 
-def test_create_account():
-    response = client.post("/accounts", json={"account_no": "A1", "holder": "Alice", "balance": 1000})
-    assert response.status_code == 200
-    assert "created" in response.json()["message"]
+def test_deposit_negative_amount(setup_accounts):
+    create_account("Bob")
+    assert deposit("Bob", -50) == "Deposit amount must be positive."
+    assert check_balance("Bob") == 0
 
+def test_deposit_to_nonexistent_account(setup_accounts):
+    assert deposit("Charlie", 200) == "Account does not exist."
 
-def test_check_balance():
-    client.post("/accounts", json={"account_no": "A2", "holder": "Bob", "balance": 500})
-    response = client.get("/accounts/A2/balance")
-    assert response.status_code == 200
-    assert response.json()["balance"] == 500
+# ------------------- Withdrawals -------------------
+def test_withdraw_success(setup_accounts):
+    create_account("Daisy")
+    deposit("Daisy", 300)
+    assert withdraw("Daisy", 150) == "Withdrew 150 from Daisy's account."
+    assert check_balance("Daisy") == 150
 
+def test_withdraw_insufficient_balance(setup_accounts):
+    create_account("Eve")
+    deposit("Eve", 50)
+    assert withdraw("Eve", 100) == "Insufficient balance."
 
-def test_deposit():
-    client.post("/accounts", json={"account_no": "A3", "holder": "Charlie", "balance": 200})
-    response = client.post("/accounts/A3/deposit", json={"amount": 100})
-    assert response.status_code == 200
-    assert response.json()["new_balance"] == 300
+def test_withdraw_negative_amount(setup_accounts):
+    create_account("Frank")
+    deposit("Frank", 100)
+    assert withdraw("Frank", -20) == "Withdrawal amount must be positive."
 
+def test_withdraw_nonexistent_account(setup_accounts):
+    assert withdraw("Ghost", 50) == "Account does not exist."
 
-def test_withdraw():
-    client.post("/accounts", json={"account_no": "A4", "holder": "David", "balance": 300})
-    response = client.post("/accounts/A4/withdraw", json={"amount": 100})
-    assert response.status_code == 200
-    assert response.json()["new_balance"] == 200
+# ------------------- Transfers -------------------
+def test_transfer_success(setup_accounts):
+    create_account("Harry")
+    create_account("Ivy")
+    deposit("Harry", 500)
+    assert transfer("Harry", "Ivy", 200) == "Transferred 200 from Harry to Ivy."
+    assert check_balance("Harry") == 300
+    assert check_balance("Ivy") == 200
 
+def test_transfer_insufficient_balance(setup_accounts):
+    create_account("Jack")
+    create_account("Kate")
+    deposit("Jack", 50)
+    assert transfer("Jack", "Kate", 100) == "Insufficient balance."
 
-def test_withdraw_insufficient_balance():
-    client.post("/accounts", json={"account_no": "A5", "holder": "Eve", "balance": 50})
-    response = client.post("/accounts/A5/withdraw", json={"amount": 100})
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Insufficient funds"
+def test_transfer_to_nonexistent_account(setup_accounts):
+    create_account("Leo")
+    deposit("Leo", 100)
+    assert transfer("Leo", "NonExistent", 50) == "One or both accounts do not exist."
 
+def test_transfer_from_nonexistent_account(setup_accounts):
+    create_account("Mona")
+    assert transfer("Ghost", "Mona", 30) == "One or both accounts do not exist."
 
-def test_transfer():
-    client.post("/accounts", json={"account_no": "A6", "holder": "Frank", "balance": 500})
-    client.post("/accounts", json={"account_no": "A7", "holder": "Grace", "balance": 200})
-    response = client.post("/transfer", json={"from_acc": "A6", "to_acc": "A7", "amount": 100})
-    assert response.status_code == 200
-    assert "Transferred" in response.json()["message"]
+def test_transfer_negative_amount(setup_accounts):
+    create_account("Oscar")
+    create_account("Pam")
+    deposit("Oscar", 100)
+    assert transfer("Oscar", "Pam", -20) == "Transfer amount must be positive."
 
-    balance1 = client.get("/accounts/A6/balance").json()["balance"]
-    balance2 = client.get("/accounts/A7/balance").json()["balance"]
-    assert balance1 == 400
-    assert balance2 == 300
+# ------------------- Balance Checks -------------------
+def test_check_balance_existing_account(setup_accounts):
+    create_account("Quinn")
+    deposit("Quinn", 500)
+    assert check_balance("Quinn") == 500
 
+def test_check_balance_nonexistent_account(setup_accounts):
+    assert check_balance("Ruth") == "Account does not exist."
 
-def test_delete_account():
-    client.post("/accounts", json={"account_no": "A8", "holder": "Hannah", "balance": 400})
-    response = client.delete("/accounts/A8")
-    assert response.status_code == 200
-    assert "deleted" in response.json()["message"]
+# ------------------- Edge Cases -------------------
+def test_multiple_operations_sequence(setup_accounts):
+    create_account("Sam")
+    deposit("Sam", 1000)
+    withdraw("Sam", 200)
+    deposit("Sam", 300)
+    withdraw("Sam", 100)
+    assert check_balance("Sam") == 1000  # 1000 - 200 + 300 - 100 = 1000
+
+def test_transfer_entire_balance(setup_accounts):
+    create_account("Tom")
+    create_account("Uma")
+    deposit("Tom", 400)
+    assert transfer("Tom", "Uma", 400) == "Transferred 400 from Tom to Uma."
+    assert check_balance("Tom") == 0
+    assert check_balance("Uma") == 400
+
+def test_zero_deposit(setup_accounts):
+    create_account("Victor")
+    assert deposit("Victor", 0) == "Deposit amount must be positive."
+
+def test_zero_withdraw(setup_accounts):
+    create_account("Wendy")
+    deposit("Wendy", 100)
+    assert withdraw("Wendy", 0) == "Withdrawal amount must be positive."
+
+def test_zero_transfer(setup_accounts):
+    create_account("Xavier")
+    create_account("Yara")
+    deposit("Xavier", 100)
+    assert transfer("Xavier", "Yara", 0) == "Transfer amount must be positive."
