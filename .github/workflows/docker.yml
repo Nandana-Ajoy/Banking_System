@@ -81,4 +81,4 @@ jobs:
         context: .
         push: true
         tags: |
-          ${{ secrets.DOCKER_HUB_USERNAME }}/banking_system:latest
+          ${{ secrets.DOCKER_HUB_USERNAME }}/bankatm_api_online:latest
